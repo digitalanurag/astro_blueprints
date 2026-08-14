@@ -1,0 +1,25 @@
+dag_id: snowflake_task_to_dbt_poc
+schedule: null
+tags: [ snowflake, dbt-cloud, blueprint, poc ]
+catchup: false
+description: "POC: trigger Snowflake tasks, wait for async completion, then run a dbt Cloud job with per-run model selection."
+
+steps:
+  snowflake_to_dbt:
+    blueprint: snowflake_dbt
+    dbt_account_id: 70506183155690 # <-- replace with your dbt Cloud account id
+
+    dbt_check_interval_seconds: 60
+    # --- dbt Cloud ---
+    dbt_cloud_conn_id: astro_dbt_connn
+    dbt_job_id: 70506183136984 # <-- replace with your dbt Cloud production job id
+    dbt_models: [ my_first_dbt_model ]
+    dbt_timeout_seconds: 7200
+
+    poll_interval_seconds: 30
+    # --- Snowflake ---
+    snowflake_conn_id: snowflake_conn
+    snowflake_tasks:
+      # Replace with your fully qualified Snowflake task names.
+      [ DBT_DB.CORE.ASTRO_3_MIN_TEST ]
+    task_timeout_seconds: 3600
