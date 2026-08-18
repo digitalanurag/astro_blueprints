@@ -14,8 +14,8 @@ steps:
     dbt_cloud_conn_id: astro_dbt_connn
     dbt_job_id: 70506183136984 # <-- replace with your dbt Cloud production job id
     dbt_models: 
-      - name: my_first_dbt_model
-      - name: my_second_dbt_model
+      - my_first_dbt_model
+      - my_second_dbt_model
     dbt_timeout_seconds: 7200
 
     poll_interval_seconds: 30
