@@ -161,26 +161,35 @@ class SnowflakeDbt(Blueprint[SnowflakeDbtConfig]):
                 trigger >> monitor
                 monitor_tasks.append(monitor)
 
-            run_dbt_models = DbtCloudRunJobOperator(
-                task_id="run_dbt_models",
+            previous_dbt_task = None
+ 
+            for index, model in enumerate(config.dbt_models):
+ 
+                run_dbt_model = DbtCloudRunJobOperator(
+                task_id=f"run_dbt_model_{index + 1}",
                 dbt_cloud_conn_id=config.dbt_cloud_conn_id,
                 account_id=config.dbt_account_id,
                 job_id=config.dbt_job_id,
-                steps_override=_build_dbt_steps_override(config.dbt_models),
+                steps_override=[
+                    f"dbt build --select {model}"
+                ],
                 wait_for_termination=True,
                 check_interval=config.dbt_check_interval_seconds,
                 timeout=config.dbt_timeout_seconds,
                 deferrable=True,
-                trigger_reason=(
-                    "Triggered by Airflow after Snowflake tasks: "
-                    + ", ".join(config.snowflake_tasks)
-                ),
+                trigger_reason=f"Triggered by Airflow for dbt model: {model}",
             )
-
-            # Fan-in: dbt depends on ALL Snowflake monitors (default trigger
-            # rule = all_success, so failure of any Snowflake monitor blocks dbt).
-            for monitor in monitor_tasks:
-                monitor >> run_dbt_models
+ 
+    # First dbt model waits for all Snowflake tasks
+            if previous_dbt_task is None:
+                for monitor in monitor_tasks:
+                    monitor >> run_dbt_model
+        
+            # Remaining models run one after another
+            else:
+                previous_dbt_task >> run_dbt_model
+        
+            previous_dbt_task = run_dbt_model
 
         return group
 
