@@ -181,15 +181,16 @@ class SnowflakeDbt(Blueprint[SnowflakeDbtConfig]):
             )
  
     # First dbt model waits for all Snowflake tasks
-            if previous_dbt_task is None:
-                for monitor in monitor_tasks:
-                    monitor >> run_dbt_model
-        
-            # Remaining models run one after another
-            else:
-                previous_dbt_task >> run_dbt_model
-        
-            previous_dbt_task = run_dbt_model
+               if previous_dbt_task is None:
+                   for monitor in monitor_tasks:
+                       monitor >> run_dbt_model
+           
+               # Remaining models run one after another
+               else:
+                   previous_dbt_task >> run_dbt_model
+           
+               previous_dbt_task = run_dbt_model
+           
 
         return group
 
