@@ -166,19 +166,19 @@ class SnowflakeDbt(Blueprint[SnowflakeDbtConfig]):
             for index, model in enumerate(config.dbt_models):
  
                 run_dbt_model = DbtCloudRunJobOperator(
-                task_id=f"run_dbt_model_{index + 1}",
-                dbt_cloud_conn_id=config.dbt_cloud_conn_id,
-                account_id=config.dbt_account_id,
-                job_id=config.dbt_job_id,
-                steps_override=[
-                    f"dbt build --select {model}"
-                ],
-                wait_for_termination=True,
-                check_interval=config.dbt_check_interval_seconds,
-                timeout=config.dbt_timeout_seconds,
-                deferrable=True,
-                trigger_reason=f"Triggered by Airflow for dbt model: {model}",
-            )
+                   task_id=f"run_dbt_model_{index + 1}",
+                   dbt_cloud_conn_id=config.dbt_cloud_conn_id,
+                   account_id=config.dbt_account_id,
+                   job_id=config.dbt_job_id,
+                   steps_override=[
+                       f"dbt build --select {model}"
+                   ],
+                   wait_for_termination=True,
+                   check_interval=config.dbt_check_interval_seconds,
+                   timeout=config.dbt_timeout_seconds,
+                   deferrable=True,
+                   trigger_reason=f"Triggered by Airflow for dbt model: {model}",
+               )
  
     # First dbt model waits for all Snowflake tasks
                if previous_dbt_task is None:
