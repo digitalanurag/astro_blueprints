@@ -1,5 +1,5 @@
 dag_id: snowflake_task_to_dbt_poc
-schedule: "20 9 * * *"
+schedule: "30 9 * * *"
 tags: [ snowflake, dbt-cloud, blueprint, poc ]
 catchup: false
 description: "POC: trigger Snowflake tasks, wait for async completion, then run a dbt Cloud job with per-run model selection."
