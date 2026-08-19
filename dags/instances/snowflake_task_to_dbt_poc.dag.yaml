@@ -1,9 +1,8 @@
 dag_id: snowflake_task_to_dbt_poc
-schedule: "46 13 * * *"
+schedule: "30 5 * * *"
 start_date: "2026-08-01"
 timezone: Asia/Kolkata
-catchup: false
-tags: [snowflake, dbt-cloud, blueprint, poc]
+
 
 steps:
   snowflake_task_1:
