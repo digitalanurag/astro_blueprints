@@ -1,5 +1,5 @@
 dag_id: snowflake_task_to_dbt_poc
-schedule: "40 20 * * *"  
+schedule: "17 8 * * *"  
 catchup: false
 description: >
   Trigger Snowflake task, wait for actual asynchronous completion,
