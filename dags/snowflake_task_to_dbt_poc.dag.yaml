@@ -1,27 +1,53 @@
 dag_id: snowflake_task_to_dbt_poc
-schedule: "20 10 * * *"
-tags: [ snowflake, dbt-cloud, blueprint, poc ]
+schedule: "40 20 * * *"  
 catchup: false
-description: "POC: trigger Snowflake tasks, wait for async completion, then run a dbt Cloud job with per-run model selection."
+description: >
+  Trigger Snowflake task, wait for actual asynchronous completion,
+  then run dbt models.
+tags:
+  - snowflake
+  - dbt-cloud
+  - blueprint
+  - poc
 
 steps:
-  snowflake_to_dbt:
-    blueprint: snowflake_dbt
-    dbt_account_id: 70506183155690 # <-- replace with your dbt Cloud account id
-
-    dbt_check_interval_seconds: 60
-    # --- dbt Cloud ---
-    dbt_cloud_conn_id: astro_dbt_connn
-    dbt_job_id: 70506183136984 # <-- replace with your dbt Cloud production job id
-    dbt_models: 
-      - my_first_dbt_model
-      - my_second_dbt_model
-    dbt_timeout_seconds: 7200
-
-    poll_interval_seconds: 30
-    # --- Snowflake ---
+  snowflake_task_1:
+    blueprint: snowflake_task_blueprint
+    version: 1
     snowflake_conn_id: snowflake_conn
-    snowflake_tasks:
-      # Replace with your fully qualified Snowflake task names.
-      [ DBT_DB.CORE.ASTRO_3_MIN_TEST ]
+    snowflake_task: DBT_DB.CORE.ASTRO_3_MIN_TEST
+    poll_interval_seconds: 30
     task_timeout_seconds: 3600
+
+  # This runs in parallel with snowflake_task_1 because there is no depends_on.
+  # snowflake_task_2:
+  #   blueprint: snowflake_task_blueprint
+  #   version: 1
+  #   snowflake_conn_id: snowflake_conn
+  #   snowflake_task: DBT_DB.CORE.ANOTHER_TASK
+  #   poll_interval_seconds: 30
+  #   task_timeout_seconds: 3600
+
+  dbt_model_1:
+    blueprint: dbt_cloud_model_blueprint
+    version: 1
+    dbt_cloud_conn_id: astro_dbt_connn
+    dbt_account_id: 70506183155690
+    dbt_job_id: 70506183136984
+    dbt_model: my_first_dbt_model
+    dbt_check_interval_seconds: 60
+    dbt_timeout_seconds: 7200
+    depends_on:
+      - snowflake_task_1
+
+  dbt_model_2:
+    blueprint: dbt_cloud_model_blueprint
+    version: 1
+    dbt_cloud_conn_id: astro_dbt_connn
+    dbt_account_id: 70506183155690
+    dbt_job_id: 70506183136984
+    dbt_model: my_second_dbt_model
+    dbt_check_interval_seconds: 60
+    dbt_timeout_seconds: 7200
+    depends_on:
+      - dbt_model_1

@@ -1,8 +1,8 @@
-"""Unit tests for the Snowflake Task -> dbt Cloud Blueprint.
+"""Unit tests for the Snowflake Task and dbt Cloud Model blueprints.
 
-These tests validate the Blueprint contract in isolation: they construct the
-config, render the TaskGroup, and assert the resulting graph and validation
-rules. They do not touch Snowflake or dbt Cloud.
+These tests validate the Blueprint contracts in isolation: they construct
+the configs, render into a DAG, and assert the resulting graph and
+validation rules. They do not touch Snowflake or dbt Cloud.
 """
 
 from __future__ import annotations
@@ -11,196 +11,77 @@ import pytest
 from airflow.sdk import DAG
 from pydantic import ValidationError
 
-from dags.templates.snowflake_dbt_blueprints import (
-    SnowflakeDbt,
-    SnowflakeDbtConfig,
-    _build_dbt_steps_override,
+from dags.templates.dbt_cloud_model_blueprint import (
+    DbtCloudModelBlueprint,
+    DbtCloudModelConfig,
+)
+from dags.templates.snowflake_task_blueprint import (
+    SnowflakeTaskBlueprint,
+    SnowflakeTaskConfig,
 )
 
 
-def _make_blueprint(step_id: str = "snowflake_to_dbt") -> SnowflakeDbt:
-    bp = SnowflakeDbt()
+def _make_snowflake_blueprint(
+    step_id: str = "snowflake_task",
+) -> SnowflakeTaskBlueprint:
+    bp = SnowflakeTaskBlueprint()
     # ``step_id`` is set by the loader in production; set it manually for tests.
     bp.step_id = step_id
     return bp
 
 
-def _render(cfg: SnowflakeDbtConfig, step_id: str = "snowflake_to_dbt"):
-    with DAG(dag_id="test_snowflake_dbt", schedule=None) as dag:
-        _make_blueprint(step_id).render(cfg)
+def _make_dbt_blueprint(step_id: str = "dbt_model") -> DbtCloudModelBlueprint:
+    bp = DbtCloudModelBlueprint()
+    bp.step_id = step_id
+    return bp
+
+
+def _render_snowflake(cfg: SnowflakeTaskConfig, step_id: str = "snowflake_task") -> DAG:
+    with DAG(dag_id="test_snowflake_task", schedule=None) as dag:
+        _make_snowflake_blueprint(step_id).render(cfg)
+    return dag
+
+
+def _render_dbt(cfg: DbtCloudModelConfig, step_id: str = "dbt_model") -> DAG:
+    with DAG(dag_id="test_dbt_model", schedule=None) as dag:
+        _make_dbt_blueprint(step_id).render(cfg)
     return dag
 
 
 # ---------------------------------------------------------------------------
-# 1. Renders successfully
+# SnowflakeTaskBlueprint
 # ---------------------------------------------------------------------------
 
 
-def test_blueprint_renders_successfully():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=["POC_DB.PUBLIC.TASK_A"],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers"],
-    )
-    dag = _render(cfg)
+def test_snowflake_blueprint_renders_trigger_and_monitor():
+    cfg = SnowflakeTaskConfig(snowflake_task="POC_DB.PUBLIC.TASK_A")
+    dag = _render_snowflake(cfg)
     task_ids = set(dag.task_ids)
-    assert "snowflake_to_dbt.trigger__poc_db__public__task_a" in task_ids
-    assert "snowflake_to_dbt.monitor__poc_db__public__task_a" in task_ids
-    assert "snowflake_to_dbt.run_dbt_models" in task_ids
+    assert "snowflake_task.trigger__poc_db__public__task_a" in task_ids
+    assert "snowflake_task.monitor__poc_db__public__task_a" in task_ids
 
 
-# ---------------------------------------------------------------------------
-# 2. One Snowflake task -> one trigger + one monitor
-# ---------------------------------------------------------------------------
+def test_snowflake_monitor_depends_on_trigger():
+    cfg = SnowflakeTaskConfig(snowflake_task="POC_DB.PUBLIC.TASK_A")
+    dag = _render_snowflake(cfg)
+    monitor = dag.get_task("snowflake_task.monitor__poc_db__public__task_a")
+    upstream_ids = {t.task_id for t in monitor.upstream_list}
+    assert "snowflake_task.trigger__poc_db__public__task_a" in upstream_ids
 
 
-def test_single_snowflake_task_produces_one_trigger_and_monitor():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=["POC_DB.PUBLIC.TASK_ONLY"],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers"],
-    )
-    dag = _render(cfg)
-    triggers = [t for t in dag.task_ids if ".trigger__" in t]
-    monitors = [t for t in dag.task_ids if ".monitor__" in t]
-    assert len(triggers) == 1
-    assert len(monitors) == 1
+def test_snowflake_monitor_trigger_task_id_matches_full_path():
+    cfg = SnowflakeTaskConfig(snowflake_task="POC_DB.PUBLIC.TASK_A")
+    dag = _render_snowflake(cfg)
+    monitor = dag.get_task("snowflake_task.monitor__poc_db__public__task_a")
+    # The sensor needs to xcom_pull from the fully-qualified trigger task_id.
+    assert monitor.trigger_task_id == "snowflake_task.trigger__poc_db__public__task_a"
 
 
-# ---------------------------------------------------------------------------
-# 3. Multiple Snowflake tasks -> correct number of trigger/monitor tasks
-# ---------------------------------------------------------------------------
-
-
-def test_multiple_snowflake_tasks_produce_correct_task_counts():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=[
-            "POC_DB.PUBLIC.TASK_A",
-            "POC_DB.PUBLIC.TASK_B",
-            "POC_DB.PUBLIC.TASK_C",
-        ],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers", "stg_orders"],
-    )
-    dag = _render(cfg)
-    triggers = [t for t in dag.task_ids if ".trigger__" in t]
-    monitors = [t for t in dag.task_ids if ".monitor__" in t]
-    assert len(triggers) == 3
-    assert len(monitors) == 3
-
-
-# ---------------------------------------------------------------------------
-# 4. dbt task depends on ALL monitor tasks
-# ---------------------------------------------------------------------------
-
-
-def test_dbt_task_depends_on_all_snowflake_monitors():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=[
-            "POC_DB.PUBLIC.TASK_A",
-            "POC_DB.PUBLIC.TASK_B",
-        ],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers"],
-    )
-    dag = _render(cfg)
-    dbt = dag.get_task("snowflake_to_dbt.run_dbt_models")
-    upstream_ids = {t.task_id for t in dbt.upstream_list}
-    assert "snowflake_to_dbt.monitor__poc_db__public__task_a" in upstream_ids
-    assert "snowflake_to_dbt.monitor__poc_db__public__task_b" in upstream_ids
-
-
-# ---------------------------------------------------------------------------
-# 5. dbt cannot be reached without going through Snowflake monitors
-# ---------------------------------------------------------------------------
-
-
-def test_dbt_has_no_path_that_bypasses_snowflake_success():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=[
-            "POC_DB.PUBLIC.TASK_A",
-            "POC_DB.PUBLIC.TASK_B",
-        ],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers"],
-    )
-    dag = _render(cfg)
-    dbt = dag.get_task("snowflake_to_dbt.run_dbt_models")
-
-    # Default trigger rule = all_success; never modified in the blueprint.
-    assert dbt.trigger_rule == "all_success"
-
-    # Every upstream is a monitor, and each monitor is reached only via its
-    # trigger (no back-doors from any other task in the group).
-    for monitor in dbt.upstream_list:
-        assert monitor.task_id.startswith("snowflake_to_dbt.monitor__")
-        trig_upstreams = {t.task_id for t in monitor.upstream_list}
-        assert any(t.startswith("snowflake_to_dbt.trigger__") for t in trig_upstreams)
-
-
-# ---------------------------------------------------------------------------
-# 6. steps_override command is built correctly
-# ---------------------------------------------------------------------------
-
-
-def test_steps_override_command_built_from_models():
-    steps = _build_dbt_steps_override(["stg_customers", "stg_orders"])
-    assert steps == ["dbt build --select stg_customers stg_orders"]
-
-
-def test_steps_override_included_on_dbt_operator():
-    cfg = SnowflakeDbtConfig(
-        snowflake_tasks=["POC_DB.PUBLIC.TASK_A"],
-        dbt_account_id=1,
-        dbt_job_id=2,
-        dbt_models=["stg_customers", "stg_orders"],
-    )
-    dag = _render(cfg)
-    dbt = dag.get_task("snowflake_to_dbt.run_dbt_models")
-    assert dbt.steps_override == ["dbt build --select stg_customers stg_orders"]
-    assert dbt.job_id == 2
-    assert dbt.account_id == 1
-    assert dbt.dbt_cloud_conn_id == "astro_dbt_connn"
-
-
-# ---------------------------------------------------------------------------
-# 7. Empty snowflake_tasks rejected
-# ---------------------------------------------------------------------------
-
-
-def test_empty_snowflake_tasks_rejected():
-    with pytest.raises(ValidationError):
-        SnowflakeDbtConfig(
-            snowflake_tasks=[],
-            dbt_account_id=1,
-            dbt_job_id=2,
-            dbt_models=["stg_customers"],
-        )
-
-
-# ---------------------------------------------------------------------------
-# 8. Empty dbt_models rejected
-# ---------------------------------------------------------------------------
-
-
-def test_empty_dbt_models_rejected():
-    with pytest.raises(ValidationError):
-        SnowflakeDbtConfig(
-            snowflake_tasks=["POC_DB.PUBLIC.TASK_A"],
-            dbt_account_id=1,
-            dbt_job_id=2,
-            dbt_models=[],
-        )
-
-
-# ---------------------------------------------------------------------------
-# Bonus: SQL-injection guard on Snowflake task names
-# ---------------------------------------------------------------------------
+def test_snowflake_config_defaults():
+    cfg = SnowflakeTaskConfig(snowflake_task="POC_DB.PUBLIC.TASK_A")
+    assert cfg.snowflake_conn_id == "snowflake_conn"
+    assert cfg.poll_interval_seconds == 30
+    assert cfg.task_timeout_seconds == 3600
 
 
 @pytest.mark.parametrize(
@@ -215,9 +96,93 @@ def test_empty_dbt_models_rejected():
 )
 def test_invalid_snowflake_task_names_rejected(bad_name):
     with pytest.raises(ValidationError):
-        SnowflakeDbtConfig(
-            snowflake_tasks=[bad_name],
+        SnowflakeTaskConfig(snowflake_task=bad_name)
+
+
+@pytest.mark.parametrize(
+    "bad_interval",
+    [0, 4, 3601, 10_000],
+)
+def test_poll_interval_bounds_enforced(bad_interval):
+    with pytest.raises(ValidationError):
+        SnowflakeTaskConfig(
+            snowflake_task="POC_DB.PUBLIC.TASK_A",
+            poll_interval_seconds=bad_interval,
+        )
+
+
+# ---------------------------------------------------------------------------
+# DbtCloudModelBlueprint
+# ---------------------------------------------------------------------------
+
+
+def test_dbt_blueprint_renders_run_job_operator():
+    cfg = DbtCloudModelConfig(
+        dbt_account_id=1,
+        dbt_job_id=2,
+        dbt_model="stg_customers",
+    )
+    dag = _render_dbt(cfg)
+    assert "dbt_model" in dag.task_ids
+    op = dag.get_task("dbt_model")
+    assert op.job_id == 2
+    assert op.account_id == 1
+    assert op.dbt_cloud_conn_id == "astro_dbt_connn"
+    assert op.steps_override == ["dbt build --select stg_customers"]
+    assert op.wait_for_termination is True
+    assert op.deferrable is True
+
+
+def test_dbt_blueprint_uses_config_intervals_and_timeout():
+    cfg = DbtCloudModelConfig(
+        dbt_account_id=1,
+        dbt_job_id=2,
+        dbt_model="stg_customers",
+        dbt_check_interval_seconds=90,
+        dbt_timeout_seconds=3600,
+    )
+    dag = _render_dbt(cfg)
+    op = dag.get_task("dbt_model")
+    assert op.check_interval == 90
+    assert op.timeout == 3600
+
+
+@pytest.mark.parametrize("bad_model", ["", "   ", "\t\n"])
+def test_empty_or_whitespace_dbt_model_rejected(bad_model):
+    with pytest.raises(ValidationError):
+        DbtCloudModelConfig(
             dbt_account_id=1,
             dbt_job_id=2,
-            dbt_models=["stg_customers"],
+            dbt_model=bad_model,
+        )
+
+
+def test_dbt_model_is_stripped():
+    cfg = DbtCloudModelConfig(
+        dbt_account_id=1,
+        dbt_job_id=2,
+        dbt_model="  stg_customers  ",
+    )
+    assert cfg.dbt_model == "stg_customers"
+
+
+@pytest.mark.parametrize("bad_interval", [0, 5, 9])
+def test_dbt_check_interval_lower_bound(bad_interval):
+    with pytest.raises(ValidationError):
+        DbtCloudModelConfig(
+            dbt_account_id=1,
+            dbt_job_id=2,
+            dbt_model="stg_customers",
+            dbt_check_interval_seconds=bad_interval,
+        )
+
+
+@pytest.mark.parametrize("bad_timeout", [0, 30, 59])
+def test_dbt_timeout_lower_bound(bad_timeout):
+    with pytest.raises(ValidationError):
+        DbtCloudModelConfig(
+            dbt_account_id=1,
+            dbt_job_id=2,
+            dbt_model="stg_customers",
+            dbt_timeout_seconds=bad_timeout,
         )
