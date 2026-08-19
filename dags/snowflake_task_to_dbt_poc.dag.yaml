@@ -1,14 +1,10 @@
 dag_id: snowflake_task_to_dbt_poc
 schedule: "17 8 * * *"  
-catchup: false
+
 description: >
   Trigger Snowflake task, wait for actual asynchronous completion,
   then run dbt models.
-tags:
-  - snowflake
-  - dbt-cloud
-  - blueprint
-  - poc
+
 
 steps:
   snowflake_task_1:
