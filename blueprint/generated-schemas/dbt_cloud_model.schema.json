@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dbt Cloud Model",
+  "type": "object",
+  "properties": {
+    "dbt_cloud_conn_id": {
+      "type": "string",
+      "default": "astro_dbt_connn"
+    },
+    "dbt_account_id": {
+      "type": "integer"
+    },
+    "dbt_job_id": {
+      "type": "integer"
+    },
+    "dbt_model": {
+      "type": "string"
+    },
+    "dbt_check_interval": {
+      "type": "integer",
+      "minimum": 10,
+      "default": 60
+    },
+    "dbt_timeout": {
+      "type": "integer",
+      "minimum": 60,
+      "default": 7200
+    },
+    "blueprint": {
+      "type": "string",
+      "const": "dbt_cloud_model"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1
+    }
+  },
+  "required": [
+    "dbt_account_id",
+    "dbt_job_id",
+    "dbt_model",
+    "blueprint",
+    "version"
+  ]
+}

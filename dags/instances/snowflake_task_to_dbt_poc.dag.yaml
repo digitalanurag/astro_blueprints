@@ -1,0 +1,40 @@
+dag_id: snowflake_task_to_dbt_poc
+schedule: "46 13 * * *"
+start_date: "2026-08-01"
+timezone: Asia/Kolkata
+catchup: false
+tags: [snowflake, dbt-cloud, blueprint, poc]
+
+steps:
+  snowflake_task_1:
+    blueprint: snowflake_trigger_task
+    version: 1
+    database: DBT_DB
+    schema: CORE
+    task_name: ASTRO_3_MIN_TEST
+    snowflake_conn_id: snowflake_conn
+    warehouse: COMPUTE_WH
+    poke_interval: 30
+    process_timeout: 3600
+
+  dbt_model_1:
+    blueprint: dbt_cloud_model
+    version: 1
+    dbt_cloud_conn_id: astro_dbt_connn
+    dbt_account_id: 70506183155690
+    dbt_job_id: 70506183136984
+    dbt_model: my_first_dbt_model
+    dbt_check_interval: 60
+    dbt_timeout: 7200
+    depends_on: [snowflake_task_1]
+
+  dbt_model_2:
+    blueprint: dbt_cloud_model
+    version: 1
+    dbt_cloud_conn_id: astro_dbt_connn
+    dbt_account_id: 70506183155690
+    dbt_job_id: 70506183136984
+    dbt_model: my_second_dbt_model
+    dbt_check_interval: 60
+    dbt_timeout: 7200
+    depends_on: [dbt_model_1]
