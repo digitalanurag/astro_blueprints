@@ -1,5 +1,5 @@
 dag_id: snowflake_task_to_dbt_poc
-schedule: "30 12 * * *"
+schedule: "20 2 * * *"
 timezone: Asia/Kolkata
 start_date: "2026-01-01"
 catchup: false
