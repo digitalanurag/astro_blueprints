@@ -1,0 +1,30 @@
+name: Validate Release Source
+
+on:
+  pull_request:
+    branches:
+      - release
+  push:
+    branches:
+      - release
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block direct pushes to release
+        if: github.event_name == 'push'
+        run: |
+          echo "ERROR: Direct pushes to 'release' are not allowed."
+          echo "Open a pull request from 'main' instead."
+          exit 1
+
+      - name: Allow only main to release
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Source branch: ${{ github.head_ref }}"
+          if [ "${{ github.head_ref }}" != "main" ]; then
+            echo "ERROR: Only 'main' can be merged into 'release'. Got '${{ github.head_ref }}'."
+            exit 1
+          fi
+          echo "Valid promotion: main -> release"
