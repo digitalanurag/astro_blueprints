@@ -26,7 +26,9 @@ steps:
     dbt_cloud_conn_id: astro_dbt_connn
     dbt_account_id: 70506183155690
     dbt_job_id: 70506183136984
-    dbt_model: my_first_dbt_model
+    dbt_model: 
+      - my_first_dbt_model
+      - test
     dbt_check_interval: 60
     dbt_timeout: 7200
     depends_on: [snowflake_task_1]
