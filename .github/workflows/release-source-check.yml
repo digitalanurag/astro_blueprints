@@ -1,0 +1,22 @@
+name: Validate Release Source
+ 
+on:
+  pull_request:
+    branches:
+      - release
+ 
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - name: Allow only main to release
+        run: |
+          echo "Source branch: ${{ github.head_ref }}"
+ 
+          if [ "${{ github.head_ref }}" != "main" ]; then
+            echo "ERROR: Only main branch can be merged into release."
+            exit 1
+          fi
+ 
+          echo "Valid promotion: main -> release"
